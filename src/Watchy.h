@@ -62,6 +62,7 @@ class Watchy {
         bool syncNTP();
         bool syncNTP(long gmt, int dst, String ntpServer);
         void setTime();
+        void setAlarmTime();
         void setupWifi();
         bool connectWiFi();
         weatherData getWeatherData();

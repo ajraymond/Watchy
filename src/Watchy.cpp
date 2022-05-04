@@ -11,6 +11,7 @@ RTC_DATA_ATTR bool BLE_CONFIGURED;
 RTC_DATA_ATTR weatherData currentWeather;
 RTC_DATA_ATTR int weatherIntervalCounter = -1;
 RTC_DATA_ATTR bool displayFullInit = true;
+RTC_DATA_ATTR tmElements_t alarmTime;
 
 void Watchy::init(String datetime){
     esp_sleep_wakeup_cause_t wakeup_reason;
@@ -28,6 +29,9 @@ void Watchy::init(String datetime){
             if(guiState == WATCHFACE_STATE){
                 RTC.read(currentTime);
                 showWatchFace(true); //partial updates on tick
+                if ((currentTime.Hour == alarmTime.Hour) && (currentTime.Minute == alarmTime.Minute)){
+                    vibMotor();
+                }
             }
             break;
         case ESP_SLEEP_WAKEUP_EXT1: //button Press
@@ -37,6 +41,8 @@ void Watchy::init(String datetime){
             RTC.config(datetime);
             _bmaConfig();
             RTC.read(currentTime);
+	    alarmTime.Hour = 12;
+	    alarmTime.Minute = 0;
             showWatchFace(false); //full update on reset
             break;
     }
@@ -84,12 +90,15 @@ void Watchy::handleButtonPress(){
           setTime();
           break;
         case 4:
-          setupWifi();
+          setAlarmTime();
           break;
         case 5:
-          showUpdateFW();
+          setupWifi();
           break;
         case 6:
+          showUpdateFW();
+          break;
+        case 7:
           showSyncNTP();
           break;
         default:
@@ -166,12 +175,15 @@ void Watchy::handleButtonPress(){
                     setTime();
                     break;
                     case 4:
-                    setupWifi();
+                    setAlarmTime();
                     break;
                     case 5:
-                    showUpdateFW();
+                    setupWifi();
                     break;
                     case 6:
+                    showUpdateFW();
+                    break;
+                    case 7:
                     showSyncNTP();
                     break;
                     default:
@@ -223,7 +235,7 @@ void Watchy::showMenu(byte menuIndex, bool partialRefresh){
     uint16_t w, h;
     int16_t yPos;
 
-    const char *menuItems[] = {"About Watchy", "Vibrate Motor", "Show Accelerometer", "Set Time", "Setup WiFi", "Update Firmware", "Sync NTP"};
+    const char *menuItems[] = {"About Watchy", "Vibrate Motor", "Show Accelerometer", "Set Time", "Set Alarm", "Setup WiFi", "Update Firmware", "Sync NTP"};
     for(int i=0; i<MENU_LENGTH; i++){
     yPos = MENU_HEIGHT+(MENU_HEIGHT*i);
     display.setCursor(0, yPos);
@@ -252,7 +264,7 @@ void Watchy::showFastMenu(byte menuIndex){
     uint16_t w, h;
     int16_t yPos;
 
-    const char *menuItems[] = {"About Watchy", "Vibrate Motor", "Show Accelerometer", "Set Time", "Setup WiFi", "Update Firmware", "Sync NTP"};
+    const char *menuItems[] = {"About Watchy", "Vibrate Motor", "Show Accelerometer", "Set Time", "Set Alarm", "Setup WiFi", "Update Firmware", "Sync NTP"};
     for(int i=0; i<MENU_LENGTH; i++){
     yPos = MENU_HEIGHT+(MENU_HEIGHT*i);
     display.setCursor(0, yPos);
@@ -460,16 +472,107 @@ void Watchy::setTime(){
     display.print(day);
     display.display(true); //partial refresh
     }
+}
+
+void Watchy::setAlarmTime(){
+
+    guiState = APP_STATE;
+
+    int8_t minute = alarmTime.Minute;
+    int8_t hour = alarmTime.Hour;
+
+    int8_t setIndex = SET_HOUR;
+
+    int8_t blink = 0;
+
+    pinMode(DOWN_BTN_PIN, INPUT);
+    pinMode(UP_BTN_PIN, INPUT);
+    pinMode(MENU_BTN_PIN, INPUT);
+    pinMode(BACK_BTN_PIN, INPUT);
+
+    display.setFullWindow();
+
+    while(1){
+
+    if(digitalRead(MENU_BTN_PIN) == 1){
+        setIndex++;
+        if(setIndex > SET_MINUTE){
+        break;
+        }
+    }
+    if(digitalRead(BACK_BTN_PIN) == 1){
+        if(setIndex != SET_HOUR){
+        setIndex--;
+        }
+    }
+
+    blink = 1 - blink;
+
+    if(digitalRead(DOWN_BTN_PIN) == 1){
+        blink = 1;
+        switch(setIndex){
+        case SET_HOUR:
+            hour == 23 ? (hour = 0) : hour++;
+            break;
+        case SET_MINUTE:
+            minute == 59 ? (minute = 0) : minute++;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if(digitalRead(UP_BTN_PIN) == 1){
+        blink = 1;
+        switch(setIndex){
+        case SET_HOUR:
+            hour == 0 ? (hour = 23) : hour--;
+            break;
+        case SET_MINUTE:
+            minute == 0 ? (minute = 59) : minute--;
+            break;
+        default:
+            break;
+        }
+    }
+
+    display.fillScreen(GxEPD_BLACK);
+    display.setTextColor(GxEPD_WHITE);
+    display.setFont(&DSEG7_Classic_Bold_53);
+
+    display.setCursor(5, 80);
+    if(setIndex == SET_HOUR){//blink hour digits
+        display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+    }
+    if(hour < 10){
+        display.print("0");
+    }
+    display.print(hour);
+
+    display.setTextColor(GxEPD_WHITE);
+    display.print(":");
+
+    display.setCursor(108, 80);
+    if(setIndex == SET_MINUTE){//blink minute digits
+        display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+    }
+    if(minute < 10){
+        display.print("0");
+    }
+    display.print(minute);
+
+    display.display(true); //partial refresh
+    }
 
     tmElements_t tm;
-    tm.Month = month;
-    tm.Day = day;
-    tm.Year = y2kYearToTm(year);
+    tm.Month = 0;
+    tm.Day = 0;
+    tm.Year = 0;
     tm.Hour = hour;
     tm.Minute = minute;
     tm.Second = 0;
 
-    RTC.set(tm);
+    alarmTime = tm;
 
     showMenu(menuIndex, false);
 
